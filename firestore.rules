@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function userId() {
+      return request.auth.uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Collection Group Rules ---
+    match /{path=**}/members/{memberId} {
+      // Allows users to query their own membership across all projects
+      allow read: if isSignedIn() && resource.data.uid == userId();
+    }
+
+    // Role Checks
+    function getMember(projectId, uid) {
+      return get(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)).data;
+    }
+
+    function isProjectMember(projectId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/projects/$(projectId)/members/$(userId()));
+    }
+
+    function isProjectAdmin(projectId) {
+      return isSignedIn() && getMember(projectId, userId()).role == 'Admin';
+    }
+
+    // --- User Rules ---
+    match /users/{uid} {
+      function isValidUser(data) {
+        return data.uid == uid && 
+               data.email is string && 
+               data.email.size() < 256 &&
+               data.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'createdAt']) &&
+               data.keys().size() == 5;
+      }
+
+      allow get: if isSignedIn();
+      // Allow searching for users by email to add to projects
+      allow list: if isSignedIn() && (resource.data.uid == userId() || (request.query.limit <= 10)); 
+      allow create: if isSignedIn() && uid == userId() && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && uid == userId() && isValidUser(incoming()) && 
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']);
+    }
+
+    // --- Project Rules ---
+    match /projects/{projectId} {
+      function isValidProject(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+               data.creatorId == userId() &&
+               data.keys().hasAll(['name', 'description', 'creatorId', 'createdAt']) &&
+               data.keys().size() == 4;
+      }
+
+      allow get, list: if isProjectMember(projectId);
+      allow create: if isEmailVerified() && isValidId(projectId) && isValidProject(incoming()) && incoming().createdAt == request.time;
+      allow update: if isProjectAdmin(projectId) && 
+                    incoming().creatorId == existing().creatorId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description']);
+      allow delete: if isProjectAdmin(projectId);
+
+      // --- Member Subcollection ---
+      match /members/{memberId} {
+        function isValidMember(data) {
+          return data.uid is string && isValidId(data.uid) &&
+                 data.role in ['Admin', 'Member'] &&
+                 data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'joinedAt']) &&
+                 data.keys().size() == 5;
+        }
+
+        allow read: if isProjectMember(projectId);
+        // Only Admin can add/remove members, or the creator during project creation (handled by batch/separate write)
+        // Actually, logic: Creator becomes Admin on create.
+        allow create: if (isProjectAdmin(projectId) || (incoming().uid == userId() && incoming().role == 'Admin')) && 
+                      isValidMember(incoming()) && incoming().joinedAt == request.time;
+        allow update: if isProjectAdmin(projectId) && 
+                      incoming().uid == existing().uid &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['role']);
+        allow delete: if isProjectAdmin(projectId) && memberId != userId(); // Prevent self-removal if only admin? Simplified.
+      }
+
+      // --- Task Subcollection ---
+      match /tasks/{taskId} {
+        function isValidTask(data) {
+          return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+                 data.status in ['To Do', 'In Progress', 'Done'] &&
+                 data.priority in ['Low', 'Medium', 'High'] &&
+                 data.createdBy == userId() &&
+                 data.projectId == projectId &&
+                 data.keys().hasAll(['title', 'description', 'assignedTo', 'assignedToName', 'dueDate', 'priority', 'status', 'createdBy', 'createdAt', 'updatedAt', 'projectId']) &&
+                 data.keys().size() == 11;
+        }
+
+        allow read: if isProjectMember(projectId);
+        allow create: if isProjectAdmin(projectId) && isValidTask(incoming()) && 
+                      incoming().createdAt == request.time && incoming().updatedAt == request.time;
+        
+        allow update: if isProjectMember(projectId) && (
+          // Admin can change everything
+          (isProjectAdmin(projectId) && isValidTask(incoming()) && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time) ||
+          // Member can ONLY update status if assigned
+          (existing().assignedTo == userId() && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+           incoming().status in ['To Do', 'In Progress', 'Done'] &&
+           incoming().updatedAt == request.time)
+        );
+        
+        allow delete: if isProjectAdmin(projectId);
+      }
+    }
+  }
+}

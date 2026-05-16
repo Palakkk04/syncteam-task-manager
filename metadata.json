@@ -1,0 +1,6 @@
+{
+  "name": "SyncTeam Task Manager",
+  "description": "A collaborative team task management application with role-based access control, real-time project tracking, and interactive dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
