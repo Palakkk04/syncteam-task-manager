@@ -72,6 +72,35 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
+// Google Sign-In — create or find user, return JWT
+router.post('/auth/google', async (req, res) => {
+  try {
+    const { uid, email, name, photoURL } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: 'Missing uid or email' });
+
+    let user = await dbGet('SELECT * FROM users WHERE id = ?', [uid]);
+    if (!user) {
+      // Also check by email in case they registered with email/password first
+      user = await dbGet('SELECT * FROM users WHERE email = ?', [email]);
+      if (!user) {
+        // Create new Google user (no password)
+        await dbRun('INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
+          [uid, name || email, email, '']);
+        user = await dbGet('SELECT * FROM users WHERE id = ?', [uid]);
+      }
+    }
+
+    const token = jwt.sign(
+      { uid: user.id, email: user.email, displayName: user.name, photoURL: photoURL || '' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ user: { uid: user.id, email: user.email, displayName: user.name, photoURL: photoURL || '' }, token });
+  } catch (error) {
+    res.status(500).json({ message: 'Error with Google login', error: error.message });
+  }
+});
+
 router.get('/users/find', authMiddleware, async (req, res) => {
   try {
     const { email } = req.query;

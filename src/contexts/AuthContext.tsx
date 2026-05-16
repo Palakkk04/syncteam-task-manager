@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { UserProfile } from '../types';
+import { signInWithGoogle, firebaseSignOut } from '../lib/firebase';
 
 const API_BASE = '/api';
 
@@ -8,7 +9,8 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,14 +54,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(data.user);
   };
 
-  const logout = () => {
+  const loginWithGoogle = async () => {
+    const googleUser = await signInWithGoogle();
+    const res = await fetch(`${API_BASE}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: googleUser.uid,
+        email: googleUser.email,
+        name: googleUser.displayName,
+        photoURL: googleUser.photoURL,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Google login failed');
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    setProfile(data.user);
+  };
+
+  const logout = async () => {
+    try { await firebaseSignOut(); } catch (_) {}
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ profile, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ profile, loading, login, register, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -71,8 +93,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem('token');
 }

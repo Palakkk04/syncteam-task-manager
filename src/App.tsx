@@ -20,13 +20,14 @@ import { Project, Task, TaskStatus, Role } from './types';
 import { projectService, taskService } from './services/projectService';
 
 function LoginScreen() {
-  const { login, register } = useAuth();
+  const { login, register, loginWithGoogle } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +46,18 @@ function LoginScreen() {
     }
   };
 
+  const handleGoogle = async () => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      await loginWithGoogle();
+    } catch (err: any) {
+      setError(err.message || 'Google sign-in failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <motion.div
@@ -60,6 +73,22 @@ function LoginScreen() {
           <p className="text-slate-500 text-center mb-8 text-sm">{isRegister ? 'Create your account' : 'Sign in to your workspace'}</p>
 
           {error && <div className="mb-4 px-4 py-3 bg-rose-50 text-rose-600 text-sm font-medium rounded-lg border border-rose-200">{error}</div>}
+
+          {/* Google Sign-In */}
+          <button
+            onClick={handleGoogle}
+            disabled={googleLoading}
+            className="w-full flex items-center justify-center gap-3 border border-slate-200 bg-white text-slate-700 py-2.5 px-4 rounded-lg font-semibold text-sm hover:bg-slate-50 disabled:opacity-50 transition-all shadow-sm mb-4"
+          >
+            <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+            {googleLoading ? 'Signing in...' : 'Continue with Google'}
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400 font-medium">or</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {isRegister && (
