@@ -6,8 +6,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
-  photoURL: string;
-  createdAt: any; // Firestore Timestamp
+  photoURL?: string;
 }
 
 export interface Project {
@@ -15,7 +14,7 @@ export interface Project {
   name: string;
   description: string;
   creatorId: string;
-  createdAt: any;
+  createdAt?: string;
 }
 
 export interface Member {
@@ -23,7 +22,7 @@ export interface Member {
   email: string;
   displayName: string;
   role: Role;
-  joinedAt: any;
+  joinedAt?: string;
 }
 
 export interface Task {
@@ -37,27 +36,6 @@ export interface Task {
   priority: Priority;
   status: TaskStatus;
   createdBy: string;
-  createdAt: any;
-  updatedAt: any;
-}
-
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-  }
+  createdAt?: string;
+  updatedAt?: string;
 }

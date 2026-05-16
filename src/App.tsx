@@ -9,66 +9,110 @@ import {
   Plus, 
   LogOut,
   ChevronRight,
-  Target,
   Trophy,
-  AlertCircle
+  AlertCircle,
+  ArrowRight,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { Project, Task, TaskStatus, Priority, Role } from './types';
+import { Project, Task, TaskStatus, Role } from './types';
 import { projectService, taskService } from './services/projectService';
-import { collectionGroup, query, where, onSnapshot, collection, doc } from 'firebase/firestore';
-import { db } from './lib/firebase';
-import { handleFirestoreError } from './lib/firebase';
-import { OperationType } from './types';
-import { 
-  ArrowRight, 
-  Check, 
-  MoreVertical, 
-  Trash2, 
-  ExternalLink,
-  ChevronDown
-} from 'lucide-react';
 
 function LoginScreen() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
+  const [isRegister, setIsRegister] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (isRegister) {
+        await register(name, email, password);
+      } else {
+        await login(email, password);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="max-w-md w-full"
       >
-        <div className="bg-white rounded-xl border border-slate-200 p-12 shadow-xl">
-          <div className="w-16 h-16 bg-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-8">
-            <Briefcase className="w-8 h-8 text-white" />
+        <div className="bg-white rounded-xl border border-slate-200 p-10 shadow-xl">
+          <div className="w-14 h-14 bg-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-6">
+            <Briefcase className="w-7 h-7 text-white" />
           </div>
-          
-          <h1 className="text-3xl font-bold text-slate-900 text-center mb-2 tracking-tight">
-            SyncTeam
-          </h1>
-          <p className="text-slate-500 text-center mb-10">
-            Professional project management for modern teams.
-          </p>
-          
-          <button
-            onClick={login}
-            className="w-full flex items-center justify-center gap-4 bg-indigo-600 text-white py-3.5 px-6 rounded-lg font-semibold hover:bg-indigo-700 transition-all shadow-lg active:scale-[0.98]"
-          >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5 shrink-0" alt="Google" />
-            Sign in with Google
-          </button>
-          
-          <div className="mt-10 pt-8 border-t border-slate-100 flex flex-col items-center gap-4">
-            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Trusted enterprise solution</p>
-            <div className="flex -space-x-2">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-slate-400" />
-                </div>
-              ))}
+          <h1 className="text-3xl font-bold text-slate-900 text-center mb-1 tracking-tight">SyncTeam</h1>
+          <p className="text-slate-500 text-center mb-8 text-sm">{isRegister ? 'Create your account' : 'Sign in to your workspace'}</p>
+
+          {error && <div className="mb-4 px-4 py-3 bg-rose-50 text-rose-600 text-sm font-medium rounded-lg border border-rose-200">{error}</div>}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isRegister && (
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Full Name</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="John Doe"
+                  className="w-full border border-slate-200 px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Email</label>
+              <input
+                required
+                type="email"
+                placeholder="you@example.com"
+                className="w-full border border-slate-200 px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
             </div>
-          </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Password</label>
+              <input
+                required
+                type="password"
+                placeholder="••••••••"
+                className="w-full border border-slate-200 px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              {loading ? 'Please wait...' : (isRegister ? 'Create Account' : 'Sign In')}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
+          </form>
+
+          <p className="text-center text-sm text-slate-500 mt-6">
+            {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button onClick={() => { setIsRegister(!isRegister); setError(''); }} className="text-indigo-600 font-semibold hover:underline">
+              {isRegister ? 'Sign In' : 'Sign Up'}
+            </button>
+          </p>
         </div>
       </motion.div>
     </div>
@@ -297,6 +341,53 @@ function DashboardView({ projects, tasks }: { projects: Project[], tasks: Task[]
           </div>
         </div>
       </div>
+
+      {/* Tasks per User */}
+      {(() => {
+        const assignedTasks = tasks.filter(t => t.assignedTo && t.assignedToName);
+        const byUser: Record<string, { name: string; total: number; done: number }> = {};
+        for (const t of assignedTasks) {
+          if (!byUser[t.assignedTo]) byUser[t.assignedTo] = { name: t.assignedToName || '', total: 0, done: 0 };
+          byUser[t.assignedTo].total += 1;
+          if (t.status === 'Done') byUser[t.assignedTo].done += 1;
+        }
+        const entries = Object.entries(byUser);
+        if (entries.length === 0) return null;
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900">Tasks per User</h3>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {entries.map(([uid, info]) => {
+                const pct = info.total > 0 ? Math.round((info.done / info.total) * 100) : 0;
+                return (
+                  <div key={uid} className="p-4 flex items-center gap-4">
+                    <img
+                      src={`https://ui-avatars.com/api/?name=${encodeURIComponent(info.name)}&background=random`}
+                      className="w-9 h-9 rounded-full shrink-0"
+                      alt={info.name}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{info.name}</p>
+                        <span className="text-xs font-bold text-slate-500 ml-2 shrink-0">{info.done}/{info.total} done</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-700"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
 
       <div className="flex items-center justify-between p-4 bg-white border-t border-slate-200 text-[10px]">
         <div className="flex items-center gap-2 px-3">
@@ -840,46 +931,29 @@ function MainApp() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const { profile } = useAuth();
 
+  const loadProjects = async () => {
+    try {
+      const data = await projectService.getProjects();
+      setProjects(data);
+      // Load tasks for all projects
+      const taskResults = await Promise.all(
+        data.map((p: Project) =>
+          fetch(`/api/projects/${p.id}/tasks`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          }).then(r => r.json()).then(tasks => tasks.map((t: Task) => ({ ...t, projectId: p.id })))
+        )
+      );
+      setAllTasks(taskResults.flat());
+    } catch (err) {
+      console.error('Failed to load projects', err);
+    }
+  };
+
   useEffect(() => {
     if (!profile) return;
-    
-    // Subscribe to all projects user is part of
-    const q = query(collectionGroup(db, 'members'), where('uid', '==', profile.uid));
-    const unsubMemberships = onSnapshot(q, async (snapshot) => {
-      const projectIds = snapshot.docs.map(doc => doc.ref.parent.parent?.id);
-      const uniqueIds = Array.from(new Set(projectIds)).filter(Boolean) as string[];
-      
-      for (const id of uniqueIds) {
-        // Individual project listener
-        onSnapshot(doc(db, 'projects', id), (docSnap) => {
-          if (docSnap.exists()) {
-            const p = { id: docSnap.id, ...docSnap.data() } as Project;
-            setProjects(prev => {
-              const filtered = prev.filter(p1 => p1.id !== id);
-              return [...filtered, p];
-            });
-          }
-        }, (error) => {
-          // Gracefully handle if access is lost
-          console.warn(`Lost access to project ${id}`);
-        });
-
-        // Tasks for this project listener
-        onSnapshot(collection(db, 'projects', id, 'tasks'), (snap) => {
-           const projectTasks = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-           setAllTasks(prev => {
-             const filtered = prev.filter(t => t.projectId !== id);
-             return [...filtered, ...projectTasks];
-           });
-        }, (error) => {
-          console.warn(`Error fetching tasks for project ${id}:`, error);
-        });
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'collectionGroup(members)');
-    });
-
-    return () => unsubMemberships();
+    loadProjects();
+    const interval = setInterval(loadProjects, 10000);
+    return () => clearInterval(interval);
   }, [profile]);
 
   return (
@@ -910,7 +984,8 @@ function MainApp() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
             >
-              <CreateProjectView onCreated={(id) => {
+              <CreateProjectView onCreated={(_id) => {
+                loadProjects();
                 setActiveView('dashboard');
               }} />
             </motion.div>
@@ -932,7 +1007,7 @@ function MainApp() {
 }
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { profile, loading } = useAuth();
 
   if (loading) {
     return (
@@ -942,7 +1017,7 @@ function AppContent() {
     );
   }
 
-  return user ? <MainApp /> : <LoginScreen />;
+  return profile ? <MainApp /> : <LoginScreen />;
 }
 
 export default function App() {

@@ -1,79 +1,65 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signOut,
-  type User 
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
 import { UserProfile } from '../types';
 
+const API_BASE = '/api';
+
 interface AuthContextType {
-  user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  login: () => Promise<void>;
-  logout: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Sync user profile
-        const userRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userRef);
-        
-        if (!userDoc.exists()) {
-          const newProfile = {
-            uid: user.uid,
-            email: user.email || '',
-            displayName: user.displayName || 'Anonymous',
-            photoURL: user.photoURL || '',
-            createdAt: serverTimestamp(),
-          };
-          await setDoc(userRef, newProfile);
-          setProfile(newProfile as UserProfile);
-        } else {
-          setProfile(userDoc.data() as UserProfile);
-        }
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (token && savedUser) {
+      setProfile(JSON.parse(savedUser));
+    }
+    setLoading(false);
   }, []);
 
-  const login = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error('Login failed:', error);
-    }
+  const login = async (email: string, password: string) => {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Login failed');
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    setProfile(data.user);
   };
 
-  const logout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
+  const register = async (name: string, email: string, password: string) => {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Registration failed');
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    setProfile(data.user);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ profile, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -85,4 +71,8 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem('token');
 }

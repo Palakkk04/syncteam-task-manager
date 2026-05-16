@@ -1,146 +1,102 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  serverTimestamp,
-  orderBy,
-  onSnapshot,
-  collectionGroup,
-  limit
-} from 'firebase/firestore';
-import { db, handleFirestoreError } from '../lib/firebase';
-import { Project, Member, OperationType, Role, Task, TaskStatus, Priority } from '../types';
+import { Task, TaskStatus } from '../types';
 
-const PROJECTS_COLLECTION = 'projects';
+const API_BASE = '/api';
+
+function getHeaders(): HeadersInit {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { ...getHeaders(), ...(options.headers || {}) },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Request failed');
+  return data;
+}
 
 export const projectService = {
-  async createProject(name: string, description: string, creator: { uid: string, email: string, displayName: string }) {
-    const projectRef = doc(collection(db, PROJECTS_COLLECTION));
-    const projectId = projectRef.id;
-
-    try {
-      const projectData = {
-        name,
-        description,
-        creatorId: creator.uid,
-        createdAt: serverTimestamp(),
-      };
-
-      await setDoc(projectRef, projectData);
-      
-      const memberRef = doc(db, PROJECTS_COLLECTION, projectId, 'members', creator.uid);
-      await setDoc(memberRef, {
-        uid: creator.uid,
-        email: creator.email,
-        displayName: creator.displayName,
-        role: 'Admin' as Role,
-        joinedAt: serverTimestamp(),
-      });
-
-      return projectId;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, PROJECTS_COLLECTION);
-    }
+  async getProjects() {
+    return apiFetch('/projects');
   },
 
-  async addMember(projectId: string, member: { uid: string, email: string, displayName: string, role: Role }) {
-    try {
-      const memberRef = doc(db, PROJECTS_COLLECTION, projectId, 'members', member.uid);
-      await setDoc(memberRef, {
-        ...member,
-        joinedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `projects/${projectId}/members`);
-    }
-  },
-
-  async removeMember(projectId: string, userId: string) {
-    try {
-      const memberRef = doc(db, PROJECTS_COLLECTION, projectId, 'members', userId);
-      await deleteDoc(memberRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `projects/${projectId}/members/${userId}`);
-    }
+  async createProject(name: string, description: string, _creator: any) {
+    const project = await apiFetch('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name, description }),
+    });
+    return project.id;
   },
 
   async getMembers(projectId: string) {
-    try {
-      const membersRef = collection(db, PROJECTS_COLLECTION, projectId, 'members');
-      const snapshot = await getDocs(membersRef);
-      return snapshot.docs.map(doc => doc.data() as Member);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, `projects/${projectId}/members`);
-    }
+    return apiFetch(`/projects/${projectId}/members`);
+  },
+
+  async addMember(projectId: string, member: { uid: string; email: string; displayName: string; role: string }) {
+    return apiFetch(`/projects/${projectId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ uid: member.uid, role: member.role }),
+    });
+  },
+
+  async removeMember(projectId: string, userId: string) {
+    return apiFetch(`/projects/${projectId}/members/${userId}`, {
+      method: 'DELETE',
+    });
   },
 
   async findUserByEmail(email: string) {
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', email.toLowerCase().trim()), limit(1));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) return null;
-      return snapshot.docs[0].data();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'users');
-    }
-  }
+    return apiFetch(`/users/find?email=${encodeURIComponent(email)}`);
+  },
 };
 
+let taskPollingIntervals: Record<string, ReturnType<typeof setInterval>> = {};
+
 export const taskService = {
-  async createTask(projectId: string, task: Partial<Task>, creatorId: string) {
-    try {
-      const taskRef = doc(collection(db, PROJECTS_COLLECTION, projectId, 'tasks'));
-      const taskData = {
-        ...task,
-        projectId,
-        createdBy: creatorId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(taskRef, taskData);
-      return taskRef.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `projects/${projectId}/tasks`);
-    }
+  async createTask(projectId: string, task: Partial<Task>, _creatorId: string) {
+    return apiFetch(`/projects/${projectId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(task),
+    });
   },
 
   async updateTask(projectId: string, taskId: string, updates: Partial<Task>) {
-    try {
-      const taskRef = doc(db, PROJECTS_COLLECTION, projectId, 'tasks', taskId);
-      await updateDoc(taskRef, {
-        ...updates,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `projects/${projectId}/tasks/${taskId}`);
-    }
+    return apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
   },
 
   async deleteTask(projectId: string, taskId: string) {
-    try {
-      const taskRef = doc(db, PROJECTS_COLLECTION, projectId, 'tasks', taskId);
-      await deleteDoc(taskRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `projects/${projectId}/tasks/${taskId}`);
-    }
+    return apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
   },
 
   subscribeTasks(projectId: string, callback: (tasks: Task[]) => void) {
-    const tasksRef = collection(db, PROJECTS_COLLECTION, projectId, 'tasks');
-    const q = query(tasksRef, orderBy('createdAt', 'desc'));
-    
-    return onSnapshot(q, (snapshot) => {
-      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `projects/${projectId}/tasks`);
-    });
-  }
-};
+    // Initial fetch
+    apiFetch(`/projects/${projectId}/tasks`)
+      .then(callback)
+      .catch(console.error);
 
+    // Poll every 5 seconds for real-time-like updates
+    const intervalId = setInterval(() => {
+      apiFetch(`/projects/${projectId}/tasks`)
+        .then(callback)
+        .catch(console.error);
+    }, 5000);
+
+    taskPollingIntervals[projectId] = intervalId;
+
+    // Return unsubscribe function
+    return () => {
+      clearInterval(taskPollingIntervals[projectId]);
+      delete taskPollingIntervals[projectId];
+    };
+  },
+};
